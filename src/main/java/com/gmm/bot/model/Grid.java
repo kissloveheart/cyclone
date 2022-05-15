@@ -41,6 +41,20 @@ public class Grid {
 
     }
 
+    public Pair<Integer> recommendSwap5Gem(){
+        List<GemSwapInfo> listMatchGem = suggestMatch();
+        if (listMatchGem.isEmpty()) {
+            return new Pair<>(true);
+        }
+        Optional<GemSwapInfo> matchGemSizeThanFour =
+                listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 4).findFirst();
+        if (matchGemSizeThanFour.isPresent()) {
+            return matchGemSizeThanFour.get().getIndexSwapGem();
+        } else {
+            return new Pair<>(true);
+        }
+    }
+
 
     public Pair<Integer> recommendSwapGem() {
         List<GemSwapInfo> listMatchGem = suggestMatch();

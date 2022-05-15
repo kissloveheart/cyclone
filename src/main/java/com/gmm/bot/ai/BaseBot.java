@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.stereotype.Component;
 import sfs2x.client.SmartFox;
 import sfs2x.client.core.BaseEvent;
 import sfs2x.client.core.IEventListener;
@@ -25,17 +26,15 @@ import sfs2x.client.requests.JoinRoomRequest;
 import sfs2x.client.requests.LoginRequest;
 import sfs2x.client.util.ConfigData;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.gmm.bot.ai.ConstantCommand.LOBBY_FIND_GAME;
 
 @Slf4j
 @Getter
-public abstract class BaseBot implements IEventListener {
+@Component
+public  class BaseBot implements IEventListener {
     private final int ENEMY_PLAYER_ID = 0;
     private final int BOT_PLAYER_ID = 2;
     @Autowired
@@ -61,6 +60,7 @@ public abstract class BaseBot implements IEventListener {
     protected String token;
     protected SFSObject data;
     protected boolean disconnect;
+    private Scanner keyboard;
 
     public void start() {
         try {
@@ -79,6 +79,7 @@ public abstract class BaseBot implements IEventListener {
         isJoinGameRoom = false;
         disconnect = false;
         this.token = "bot";
+        keyboard = new Scanner(System.in);
         this.sfsClient.addEventListener(SFSEvent.CONNECTION, this);
         this.sfsClient.addEventListener(SFSEvent.CONNECTION_LOST, this);
         this.sfsClient.addEventListener(SFSEvent.LOGIN, this);
@@ -173,18 +174,28 @@ public abstract class BaseBot implements IEventListener {
         if (room.isGame()) {
             return;
         }
+        String start = "";
+        System.out.print("======> Enter an \"1\" to start find game: ");
+        do{
+            start = keyboard.nextLine();
+            System.out.println();
+        } while (!start.equals("1"));
+        findGame();
+
+    }
+
+    private void findGame() {
         data.putUtfString("type", "");
         data.putUtfString("adventureId", "");
         sendZoneExtensionRequest(LOBBY_FIND_GAME, data);
         log("Send request Find game from lobby");
-        //taskScheduler.schedule(new FindRoomGame(), new Date(System.currentTimeMillis() + delayFindGame));
     }
 
     protected void onRoomJoinError(BaseEvent event) {
         if (this.sfsClient.getLastJoinedRoom() != null) {
             this.logStatus("join-room", "Joined room " + this.sfsClient.getLastJoinedRoom().getName());
         }
-        taskScheduler.schedule(new FindRoomGame(), new Date(System.currentTimeMillis() + delayFindGame));
+       findGame();
     }
 
     protected void onExtensionResponse(BaseEvent event) {
@@ -215,19 +226,9 @@ public abstract class BaseBot implements IEventListener {
         }
     }
 
-    protected abstract void startGame(ISFSObject gameSession, Room room);
-
-    protected abstract void swapGem(SFSObject params);
-
-    protected abstract void handleGems(ISFSObject params);
-
-    protected abstract void startTurn(ISFSObject params);
-
     private void endGame() {
         isJoinGameRoom = false;
     }
-
-
 
     protected void assignPlayers(Room room) {
         User user1 = room.getPlayerList().get(0);
@@ -250,17 +251,7 @@ public abstract class BaseBot implements IEventListener {
     }
 
     private void onLoginSuccess(BaseEvent event) {
-        try {
             log("onLogin()|" + event.getArguments().toString());
-
-            // Find game after login
-            data.putUtfString("type", "");
-            data.putUtfString("adventureId", "");
-            sendZoneExtensionRequest(LOBBY_FIND_GAME, data);
-        } catch (Exception e) {
-            log("onLogin|error => " + e.getMessage());
-            e.printStackTrace();
-        }
     }
 
     protected void login() {
@@ -280,13 +271,159 @@ public abstract class BaseBot implements IEventListener {
         this.sfsClient.send(new ExtensionRequest(extCmd, params));
     }
 
-    private class FindRoomGame implements Runnable {
-        @Override
-        public void run() {
-            data.putUtfString("type", "");
-            data.putUtfString("adventureId", "");
-            sendZoneExtensionRequest(LOBBY_FIND_GAME, data);
-            log("SendZoneExtension LOBBY_FIND_GAME");
+    protected void swapGem(SFSObject params) {
+        boolean isValidSwap = params.getBool("validSwap");
+        if (!isValidSwap) {
+            return;
+        }
+        handleGems(params);
+    }
+
+
+    protected void handleGems(ISFSObject params) {
+        ISFSObject gameSession = params.getSFSObject("gameSession");
+        currentPlayerId = gameSession.getInt("currentPlayerId");
+        //get last snapshot
+        ISFSArray snapshotSfsArray = params.getSFSArray("snapshots");
+        ISFSObject lastSnapshot = snapshotSfsArray.getSFSObject(snapshotSfsArray.size() - 1);
+        boolean needRenewBoard = params.containsKey("renewBoard");
+        // update information of hero
+        handleHeroes(lastSnapshot);
+        if (needRenewBoard) {
+            grid.updateGems(params.getSFSArray("renewBoard"),null);
+            taskScheduler.schedule(new FinishTurn(false), getStartTime());
+            return;
+        }
+        // update gem
+        grid.setGemTypes(botPlayer.getRecommendGemType());
+        ISFSArray gemCodes = lastSnapshot.getSFSArray("gems");
+        ISFSArray gemModifiers = lastSnapshot.getSFSArray("gemModifiers");
+        grid.updateGems(gemCodes,gemModifiers);
+        taskScheduler.schedule(new FinishTurn(false), getStartTime());
+    }
+
+
+    protected void startTurn(ISFSObject params) {
+        currentPlayerId = params.getInt("currentPlayerId");
+        if (!isBotTurn()) {
+            return;
+        }
+        Pair<Integer> swap5GemPair = grid.recommendSwap5Gem();
+        if(!swap5GemPair.isNull()){
+            taskScheduler.schedule(new SendRequestSwapGem(swap5GemPair), getStartTime());
+            return;
+        }
+
+        Optional<Hero> heroFullMana = botPlayer.anyHeroFullMana();
+        if (heroFullMana.isPresent()) {
+            taskScheduler.schedule(new SendReQuestSkill(heroFullMana.get()), getStartTime());
+            return;
         }
     }
+
+    private Date getStartTime() {
+        return new Date(System.currentTimeMillis() + delaySwapGem);
+    }
+
+    private void handleHeroes(ISFSObject params) {
+        ISFSArray heroesBotPlayer = params.getSFSArray(botPlayer.getDisplayName());
+        for (int i = 0; i < botPlayer.getHeroes().size(); i++) {
+            botPlayer.getHeroes().get(i).updateHero(heroesBotPlayer.getSFSObject(i));
+        }
+
+        ISFSArray heroesEnemyPlayer = params.getSFSArray(enemyPlayer.getDisplayName());
+        for (int i = 0; i < enemyPlayer.getHeroes().size(); i++) {
+            enemyPlayer.getHeroes().get(i).updateHero(heroesEnemyPlayer.getSFSObject(i));
+        }
+    }
+
+
+    protected void startGame(ISFSObject gameSession, Room room) {
+        // Assign Bot player & enemy player
+        assignPlayers(room);
+
+        // Player & Heroes
+        ISFSObject objBotPlayer = gameSession.getSFSObject(botPlayer.getDisplayName());
+        ISFSObject objEnemyPlayer = gameSession.getSFSObject(enemyPlayer.getDisplayName());
+
+        ISFSArray botPlayerHero = objBotPlayer.getSFSArray("heroes");
+        ISFSArray enemyPlayerHero = objEnemyPlayer.getSFSArray("heroes");
+
+        for (int i = 0; i < botPlayerHero.size(); i++) {
+            botPlayer.getHeroes().add(new Hero(botPlayerHero.getSFSObject(i)));
+        }
+        for (int i = 0; i < enemyPlayerHero.size(); i++) {
+            enemyPlayer.getHeroes().add(new Hero(enemyPlayerHero.getSFSObject(i)));
+        }
+
+        // Gems
+        grid = new Grid(gameSession.getSFSArray("gems"),null, botPlayer.getRecommendGemType());
+        currentPlayerId = gameSession.getInt("currentPlayerId");
+        log("Initial game ");
+        taskScheduler.schedule(new FinishTurn(true), getStartTime());
+    }
+
+    protected GemType selectGem() {
+        return botPlayer.getRecommendGemType().stream().filter(gemType -> grid.getGemTypes().contains(gemType)).findFirst().orElseGet(null);
+    }
+
+    protected boolean isBotTurn() {
+        return botPlayer.getId() == currentPlayerId;
+    }
+
+    private class FinishTurn implements Runnable {
+        private final boolean isFirstTurn;
+
+        public FinishTurn(boolean isFirstTurn) {
+            this.isFirstTurn = isFirstTurn;
+        }
+
+        @Override
+        public void run() {
+            SFSObject data = new SFSObject();
+            data.putBool("isFirstTurn", isFirstTurn);
+            log("sendExtensionRequest()|room:" + room.getName() + "|extCmd:" + ConstantCommand.FINISH_TURN + " first turn " + isFirstTurn);
+            sendExtensionRequest(ConstantCommand.FINISH_TURN, data);
+        }
+    }
+
+    private class SendReQuestSkill implements Runnable {
+        private final Hero heroCastSkill;
+
+        public SendReQuestSkill(Hero heroCastSkill) {
+            this.heroCastSkill = heroCastSkill;
+        }
+
+        @Override
+        public void run() {
+            data.putUtfString("casterId", heroCastSkill.getId().toString());
+            if (heroCastSkill.isHeroSelfSkill()) {
+                data.putUtfString("targetId", botPlayer.firstHeroAlive().getId().toString());
+            } else {
+                data.putUtfString("targetId", enemyPlayer.firstHeroAlive().getId().toString());
+            }
+            data.putUtfString("selectedGem", String.valueOf(selectGem().getCode()));
+            data.putUtfString("gemIndex", String.valueOf(ThreadLocalRandom.current().nextInt(64)));
+            data.putBool("isTargetAllyOrNot",false);
+            log("sendExtensionRequest()|room:" + room.getName() + "|extCmd:" + ConstantCommand.USE_SKILL + "|Hero cast skill: " + heroCastSkill.getName());
+            sendExtensionRequest(ConstantCommand.USE_SKILL, data);
+        }
+
+    }
+
+    private class SendRequestSwapGem implements Runnable {
+        private Pair<Integer> indexSwap;
+
+        public SendRequestSwapGem(Pair<Integer> indexSwap) {
+            this.indexSwap = indexSwap;
+        }
+        @Override
+        public void run() {
+            data.putInt("index1", indexSwap.getParam1());
+            data.putInt("index2", indexSwap.getParam2());
+            log("sendExtensionRequest()|room:" + room.getName() + "|extCmd:" + ConstantCommand.SWAP_GEM + "|index1: " + indexSwap.getParam1() + " index1: " + indexSwap.getParam2());
+            sendExtensionRequest(ConstantCommand.SWAP_GEM, data);
+        }
+    }
+
 }
