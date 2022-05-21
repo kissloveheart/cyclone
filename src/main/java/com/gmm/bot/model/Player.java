@@ -41,7 +41,7 @@ public class Player {
          manaTypeHeroes.clear();
          log.info("Before get recommend type gem to swap");
         log.info("Gem type recommend: "+ Arrays.toString(manaTypeHeroes.toArray())+" bird:" + isBirdCastSkill);
-        log.info(" Dog full mana:" +dog.isFullMana()+ " Bird full mana:" +bird.isFullMana() + " Fire full mana:" +fire.isFullMana());
+        log.info(" Dog full mana:" +dog.noFullMana()+ " Bird full mana:" +bird.noFullMana() + " Fire full mana:" +fire.noFullMana());
          if(!bird.isAlive()){
              isBirdCastSkill = true;
          }
