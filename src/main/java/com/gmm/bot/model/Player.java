@@ -97,9 +97,9 @@ public class Player {
             manaTypeHeroes.addAll(bird.getGemTypes());
             log.info("Gem type recommend case 3: "+ Arrays.toString(manaTypeHeroes.toArray())+" bird:" + isBirdCastSkill);
             return manaTypeHeroes;
-        } else if(bird.noFullMana() && fire.noFullMana()){
-            manaTypeHeroes.addAll(bird.getGemTypes());
+        } else if(fire.noFullMana() && bird.noFullMana()){
             manaTypeHeroes.addAll(fire.getGemTypes());
+            manaTypeHeroes.addAll(bird.getGemTypes());
             log.info("Gem type recommend case 4: "+ Arrays.toString(manaTypeHeroes.toArray())+" bird:" + isBirdCastSkill);
             return manaTypeHeroes;
         } else if(dog.noFullMana()){
