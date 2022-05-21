@@ -22,6 +22,6 @@ public class ConstantCommand {
 
     public static final String ON_SWAP_GEM = "ON_SWAP_GEM";
     public static final String ON_PLAYER_USE_SKILL = "ON_PLAYER_USE_SKILL";
-
+    public static final String SEND_ALERT = "SEND_ALERT";
     public static final String BATTLE_MODE = "BATTLE_MODE";
 }

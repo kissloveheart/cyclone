@@ -7,11 +7,12 @@ import com.smartfoxserver.v2.entities.data.ISFSArray;
 import com.smartfoxserver.v2.entities.data.ISFSObject;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
+@Slf4j
 @Getter
 @Setter
 public class Hero {
@@ -44,6 +45,7 @@ public class Hero {
         this.hp = objHero.getInt("hp");
         this.mana = objHero.getInt("mana");
         this.maxMana = objHero.getInt("maxMana");
+        log.info("Update hero"+ this.getId()+ " hp:"+ this.getHp()+ " attack: "+this.getAttack()+ " mana: "+ this.getMana());
     }
 
     public boolean isAlive() {
@@ -51,7 +53,11 @@ public class Hero {
     }
 
     public boolean isFullMana() {
-        return mana >= maxMana;
+        return mana >= maxMana && hp > 0;
+    }
+
+    public boolean noFullMana(){
+        return mana < maxMana && hp > 0;
     }
 
     public boolean isHeroSelfSkill() {

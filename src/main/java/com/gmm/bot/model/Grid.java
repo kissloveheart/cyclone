@@ -8,24 +8,28 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Getter
 @Setter
 public class Grid {
+    private static final List<GemModifier> MODIFIER_LIST = Arrays.asList(GemModifier.EXPLODE_SQUARE, GemModifier.EXPLODE_HORIZONTAL, GemModifier.EXPLODE_VERTICAL);
+    private static final List<GemModifier> MODIFIER_LIST_ALL = Arrays.asList(GemModifier.EXPLODE_VERTICAL, GemModifier.MANA,GemModifier.BUFF_ATTACK,GemModifier.HIT_POINT);
     private List<Gem> gems = new ArrayList<>();
     private Set<GemType> gemTypes = new HashSet<>();
-    private Set<GemType> myHeroGemType;
+    private List<GemType> myHeroGemType;
+    private List<GemSwapInfo> listMatchGem;
 
-    public Grid(ISFSArray gemsCode,ISFSArray gemModifiers, Set<GemType> heroGemType) {
-        updateGems(gemsCode,gemModifiers);
-        this.myHeroGemType = heroGemType;
+
+    public Grid(ISFSArray gemsCode) {
+        updateGems(gemsCode, null);
     }
 
-    public void updateGems(ISFSArray gemsCode,ISFSArray gemModifiers ) {
+    public void updateGems(ISFSArray gemsCode, ISFSArray gemModifiers) {
         gems.clear();
         gemTypes.clear();
-        if(gemModifiers != null){
+        if (gemModifiers != null) {
             for (int i = 0; i < gemsCode.size(); i++) {
                 Gem gem = new Gem(i, GemType.from(gemsCode.getByte(i)), GemModifier.from(gemModifiers.getByte(i)));
                 gems.add(gem);
@@ -38,50 +42,117 @@ public class Grid {
                 gemTypes.add(gem.getType());
             }
         }
-
+        listMatchGem = suggestMatch();
+        log.info("List match gem:" +listMatchGem.size());
     }
 
-    public Pair<Integer> recommendSwap5Gem(){
-        List<GemSwapInfo> listMatchGem = suggestMatch();
+    public Pair<Integer> recommendSwap5Gem() {
         if (listMatchGem.isEmpty()) {
             return new Pair<>(true);
         }
+        // check modifier extra turn
+        Optional<GemSwapInfo> matchGemExtraTurn =
+                listMatchGem.stream().filter(gemMatch -> gemMatch.checkModifier(GemModifier.EXTRA_TURN)).findFirst();
+        if (matchGemExtraTurn.isPresent()) {
+            return matchGemExtraTurn.get().getIndexSwapGem();
+        }
+        // check 5 gem sword
+        Optional<GemSwapInfo> matchGemSizeThanFourSword =
+                listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 4 && gemMatch.checkType(GemType.SWORD)).findFirst();
+        if (matchGemSizeThanFourSword.isPresent()) {
+            return matchGemSizeThanFourSword.get().getIndexSwapGem();
+        }
+        // check 5 gem normal has modifier
+        for (GemModifier modifier : GemModifier.values()) {
+            Optional<GemSwapInfo> matchGemSizeThanFour =
+                    listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 4 && gemMatch.checkModifier(modifier)).findFirst();
+            if (matchGemSizeThanFour.isPresent()) {
+                return matchGemSizeThanFour.get().getIndexSwapGem();
+            }
+        }
+        // check 5 gem normal
         Optional<GemSwapInfo> matchGemSizeThanFour =
                 listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 4).findFirst();
         if (matchGemSizeThanFour.isPresent()) {
             return matchGemSizeThanFour.get().getIndexSwapGem();
-        } else {
-            return new Pair<>(true);
         }
+        return new Pair<>(true);
     }
 
+    public Pair<Integer> recommendSwapGemSword(){
+        Optional<GemSwapInfo> firstSword = listMatchGem.stream().filter(gemMatch -> gemMatch.checkType(GemType.SWORD)).findFirst();
+        if(firstSword.isPresent()){
+            return firstSword.get().getIndexSwapGem();
+        }
+        return new Pair<>(true);
+    }
+
+    public Pair<Integer> recommendSwapGem4Sword(){
+        Optional<GemSwapInfo> firstSword = listMatchGem.stream().filter(gemMatch ->gemMatch.getSizeMatch()>3 && gemMatch.checkType(GemType.SWORD)).findFirst();
+        if(firstSword.isPresent()){
+            return firstSword.get().getIndexSwapGem();
+        }
+        return new Pair<>(true);
+    }
 
     public Pair<Integer> recommendSwapGem() {
-        List<GemSwapInfo> listMatchGem = suggestMatch();
         if (listMatchGem.isEmpty()) {
-            return new Pair<>(-1, -1);
+            return new Pair<>(true);
         }
-        Optional<GemSwapInfo> matchGemSizeThanFour =
-                listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 4).findFirst();
-        if (matchGemSizeThanFour.isPresent()) {
-            return matchGemSizeThanFour.get().getIndexSwapGem();
+        // check gems my mana and has modifier and size 4
+        for (GemModifier modifier : MODIFIER_LIST) {
+            for (GemType type : myHeroGemType) {
+                Optional<GemSwapInfo> matchGem =
+                        listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 3 && gemMatch.checkModifier(modifier) && gemMatch.checkType(type)).findFirst();
+                if (matchGem.isPresent()) {
+                    return matchGem.get().getIndexSwapGem();
+                }
+            }
         }
-        Optional<GemSwapInfo> matchGemSizeThanThree =
-                listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 3).findFirst();
-        if (matchGemSizeThanThree.isPresent()) {
-            return matchGemSizeThanThree.get().getIndexSwapGem();
+        // check gems my mana and size 4
+        for (GemType type : myHeroGemType) {
+            Optional<GemSwapInfo> matchGem =
+                    listMatchGem.stream().filter(gemMatch -> gemMatch.getSizeMatch() > 3 && gemMatch.checkType(type)).findFirst();
+            if (matchGem.isPresent()) {
+                return matchGem.get().getIndexSwapGem();
+            }
         }
+        // check gems my mana has modifier
+        for (GemModifier modifier : MODIFIER_LIST) {
+            for (GemType type : myHeroGemType) {
+                Optional<GemSwapInfo> matchGem =
+                        listMatchGem.stream().filter(gemMatch -> gemMatch.checkModifier(modifier) && gemMatch.checkType(type)).findFirst();
+                if (matchGem.isPresent()) {
+                    return matchGem.get().getIndexSwapGem();
+                }
+            }
+        }
+        // check 3 gems my mana
+        for (GemType type : myHeroGemType) {
+            Optional<GemSwapInfo> matchGem =
+                    listMatchGem.stream().filter(gemMatch -> gemMatch.checkType(type)).findFirst();
+            if (matchGem.isPresent()) {
+                return matchGem.get().getIndexSwapGem();
+            }
+        }
+        // check 3 gems sword
         Optional<GemSwapInfo> matchGemSword =
                 listMatchGem.stream().filter(gemMatch -> gemMatch.getType() == GemType.SWORD).findFirst();
         if (matchGemSword.isPresent()) {
             return matchGemSword.get().getIndexSwapGem();
         }
-        for (GemType type : myHeroGemType) {
+        // check 3 gem anu and has modifier
+        for (GemModifier modifier : MODIFIER_LIST_ALL) {
             Optional<GemSwapInfo> matchGem =
-                    listMatchGem.stream().filter(gemMatch -> gemMatch.getType() == type).findFirst();
+                    listMatchGem.stream().filter(gemMatch -> gemMatch.checkModifier(modifier)).findFirst();
             if (matchGem.isPresent()) {
                 return matchGem.get().getIndexSwapGem();
             }
+        }
+        // check 3 gems any
+        Optional<GemSwapInfo> matchGemAny = listMatchGem.stream().findAny();
+        if (matchGemAny.isPresent()) {
+            return matchGemAny.get().getIndexSwapGem();
         }
         return listMatchGem.get(0).getIndexSwapGem();
     }
@@ -117,9 +188,10 @@ public class Grid {
     private void checkMatchSwapGem(List<GemSwapInfo> listMatchGem, Gem currentGem, Gem swapGem) {
         swap(currentGem, swapGem, gems);
         Set<Gem> matchGems = matchesAt(currentGem.getX(), currentGem.getY());
+        Set<GemModifier> collectModifier = matchGems.stream().map(Gem::getModifier).collect(Collectors.toSet());
         swap(currentGem, swapGem, gems);
         if (!matchGems.isEmpty()) {
-            listMatchGem.add(new GemSwapInfo(currentGem.getIndex(), swapGem.getIndex(), matchGems.size(), currentGem.getType()));
+            listMatchGem.add(new GemSwapInfo(currentGem.getIndex(), swapGem.getIndex(), matchGems.size(), currentGem.getType(), collectModifier));
         }
     }
 

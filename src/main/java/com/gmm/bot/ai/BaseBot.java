@@ -2,10 +2,8 @@ package com.gmm.bot.ai;
 
 import com.gmm.bot.enumeration.BattleMode;
 import com.gmm.bot.enumeration.GemType;
-import com.gmm.bot.model.Grid;
-import com.gmm.bot.model.Hero;
-import com.gmm.bot.model.Pair;
-import com.gmm.bot.model.Player;
+import com.gmm.bot.enumeration.HeroIdEnum;
+import com.gmm.bot.model.*;
 import com.smartfoxserver.v2.entities.data.ISFSArray;
 import com.smartfoxserver.v2.entities.data.ISFSObject;
 import com.smartfoxserver.v2.entities.data.SFSObject;
@@ -13,8 +11,10 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
 import sfs2x.client.SmartFox;
 import sfs2x.client.core.BaseEvent;
 import sfs2x.client.core.IEventListener;
@@ -22,12 +22,12 @@ import sfs2x.client.core.SFSEvent;
 import sfs2x.client.entities.Room;
 import sfs2x.client.entities.User;
 import sfs2x.client.requests.ExtensionRequest;
-import sfs2x.client.requests.JoinRoomRequest;
 import sfs2x.client.requests.LoginRequest;
 import sfs2x.client.util.ConfigData;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 import static com.gmm.bot.ai.ConstantCommand.LOBBY_FIND_GAME;
 
@@ -37,6 +37,7 @@ import static com.gmm.bot.ai.ConstantCommand.LOBBY_FIND_GAME;
 public  class BaseBot implements IEventListener {
     private final int ENEMY_PLAYER_ID = 0;
     private final int BOT_PLAYER_ID = 2;
+    private final int SNAPSHOT_SIZE = 1;
     @Autowired
     protected ThreadPoolTaskScheduler taskScheduler;
     @Value("${smartfox.host}")
@@ -57,6 +58,7 @@ public  class BaseBot implements IEventListener {
     protected Grid grid;
     protected volatile boolean isJoinGameRoom;
     protected String username;
+    protected String password;
     protected String token;
     protected SFSObject data;
     protected boolean disconnect;
@@ -73,7 +75,8 @@ public  class BaseBot implements IEventListener {
     }
 
     private void init() {
-        username = "bot_" + UUID.randomUUID();
+        username = "hiep.nguyenvan1";
+        password = "123456";
         sfsClient = new SmartFox();
         data = new SFSObject();
         isJoinGameRoom = false;
@@ -147,6 +150,11 @@ public  class BaseBot implements IEventListener {
         }
     }
 
+    private void showError(SFSObject params) {
+        String error = params.getUtfString("message");
+        log(error);
+    }
+
     private void onConnection(BaseEvent event) {
         if (event.getArguments().get("success").equals(true)) {
             this.logStatus("try-login", "Connected to smartfox|" + event.getArguments().toString());
@@ -209,7 +217,7 @@ public  class BaseBot implements IEventListener {
                 startGame(gameSession, room);
                 break;
             case ConstantCommand.END_GAME:
-                endGame();
+                endGame(params);
                 break;
             case ConstantCommand.START_TURN:
                 startTurn(params);
@@ -223,22 +231,46 @@ public  class BaseBot implements IEventListener {
             case ConstantCommand.PLAYER_JOINED_GAME:
                 sendExtensionRequest(ConstantCommand.I_AM_READY, new SFSObject());
                 break;
+            case ConstantCommand.SEND_ALERT:
+                showError(params);
+                break;
+
         }
     }
 
-    private void endGame() {
+    private void endGame(ISFSObject params) {
+        Integer winner = params.getInt("winner");
+        if(winner == botPlayer.getId()){
+            log("The winner is my bot :"+ botPlayer.getDisplayName() + " id: "+botPlayer.getId());
+        }
+        if(winner == enemyPlayer.getId()){
+            log("The winner is enemy :"+ enemyPlayer.getDisplayName() + " id: "+enemyPlayer.getId());
+        }
         isJoinGameRoom = false;
     }
 
     protected void assignPlayers(Room room) {
-        User user1 = room.getPlayerList().get(0);
-        log("id user1: " + user1.getPlayerId());
+        List<User> users = room.getPlayerList();
+        User user1 = users.get(0);
+        log("id user1: " + user1.getPlayerId() + " name:"+ user1.getName());
+        if(users.size() == 1){
+            if (user1.isItMe()) {
+                botPlayer = new Player(user1.getPlayerId(), "player1");
+                enemyPlayer = new Player(ENEMY_PLAYER_ID, "player2");
+            } else {
+                botPlayer = new Player(BOT_PLAYER_ID, "player2");
+                enemyPlayer = new Player(ENEMY_PLAYER_ID, "player1");
+            }
+            return;
+        }
+        User user2 = users.get(1);
+        log("id user2: " + user2.getPlayerId()+ " name:"+user2.getName());
         if (user1.isItMe()) {
-            botPlayer = new Player(user1.getPlayerId(), "player1");
-            enemyPlayer = new Player(ENEMY_PLAYER_ID, "player2");
+            botPlayer = new Player(user1.getPlayerId(), "player"+user1.getPlayerId());
+            enemyPlayer = new Player(user2.getPlayerId(), "player"+user2.getPlayerId());
         } else {
-            botPlayer = new Player(BOT_PLAYER_ID, "player2");
-            enemyPlayer = new Player(ENEMY_PLAYER_ID, "player1");
+            botPlayer = new Player(user2.getPlayerId(), "player"+user2.getPlayerId());
+            enemyPlayer = new Player(user1.getPlayerId(), "player"+user1.getPlayerId());
         }
     }
 
@@ -256,10 +288,11 @@ public  class BaseBot implements IEventListener {
 
     protected void login() {
         log("login()");
+        getTokenLogin();
         SFSObject parameters = new SFSObject();
         parameters.putUtfString(ConstantCommand.BATTLE_MODE, BattleMode.NORMAL.name());
         parameters.putUtfString(ConstantCommand.ID_TOKEN, this.token);
-        parameters.putUtfString(ConstantCommand.NICK_NAME, username);
+        parameters.putUtfString(ConstantCommand.NICK_NAME, "aaaaaaaaaa");
         this.sfsClient.send(new LoginRequest(username, "", zone, parameters));
     }
 
@@ -291,15 +324,15 @@ public  class BaseBot implements IEventListener {
         handleHeroes(lastSnapshot);
         if (needRenewBoard) {
             grid.updateGems(params.getSFSArray("renewBoard"),null);
-            taskScheduler.schedule(new FinishTurn(false), getStartTime());
+            taskScheduler.schedule(new FinishTurn(false), getStartTime(1));
             return;
         }
         // update gem
-        grid.setGemTypes(botPlayer.getRecommendGemType());
+        grid.setMyHeroGemType(botPlayer.getRecommendGemType());
         ISFSArray gemCodes = lastSnapshot.getSFSArray("gems");
         ISFSArray gemModifiers = lastSnapshot.getSFSArray("gemModifiers");
         grid.updateGems(gemCodes,gemModifiers);
-        taskScheduler.schedule(new FinishTurn(false), getStartTime());
+        taskScheduler.schedule(new FinishTurn(false), getStartTime(snapshotSfsArray.size()));
     }
 
 
@@ -308,21 +341,85 @@ public  class BaseBot implements IEventListener {
         if (!isBotTurn()) {
             return;
         }
+        // check 5gem
         Pair<Integer> swap5GemPair = grid.recommendSwap5Gem();
         if(!swap5GemPair.isNull()){
-            taskScheduler.schedule(new SendRequestSwapGem(swap5GemPair), getStartTime());
+            taskScheduler.schedule(new SendRequestSwapGem(swap5GemPair), getStartTime(SNAPSHOT_SIZE));
             return;
         }
+        // check skill dog can skill all
+        if(botPlayer.getDog().isFullMana()){
+            boolean allMatchCanSkill = enemyPlayer.getAliveHero().stream().allMatch(hero -> botPlayer.getDog().getAttack() + 2 > hero.getHp());
+            if(allMatchCanSkill){
+                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getDog()), getStartTime(SNAPSHOT_SIZE));
+                return;
+            }
+        }
+        Pair<Integer> integerSwordFour = grid.recommendSwapGem4Sword();
+        if(!integerSwordFour.isNull()){
+            taskScheduler.schedule(new SendRequestSwapGem(integerSwordFour), getStartTime(SNAPSHOT_SIZE));
+            return;
+        }
+        // check hero enemy size == 1 can skill instant
+        List<Hero> aliveHero = enemyPlayer.getAliveHero();
+        if(aliveHero.size() ==1){
+            Pair<Integer> integerPairSword = grid.recommendSwapGemSword();
+            if(!integerPairSword.isNull()){
+                Hero heroFirst = botPlayer.firstHeroAlive();
+                if(heroFirst.getAttack() > aliveHero.get(0).getHp()){
+                    taskScheduler.schedule(new SendRequestSwapGem(integerPairSword), getStartTime(SNAPSHOT_SIZE));
+                    return;
+                }
+            }
 
-        Optional<Hero> heroFullMana = botPlayer.anyHeroFullMana();
-        if (heroFullMana.isPresent()) {
-            taskScheduler.schedule(new SendReQuestSkill(heroFullMana.get()), getStartTime());
+        }
+        // check skill dog
+        if(botPlayer.getDog().isFullMana() && botPlayer.isBirdCastSkill()){
+            taskScheduler.schedule(new SendReQuestSkill(botPlayer.getDog()), getStartTime(SNAPSHOT_SIZE));
             return;
         }
+        if(botPlayer.getBird().isFullMana()){
+            botPlayer.setBirdCastSkill(true);
+            if(botPlayer.getDog().isAlive()){
+                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getBird(),botPlayer.getDog().getId() ), getStartTime(SNAPSHOT_SIZE));
+                return;
+            }
+            taskScheduler.schedule(new SendReQuestSkill(botPlayer.getBird(),botPlayer.getBird().getId() ), getStartTime(SNAPSHOT_SIZE));
+            return;
+        }
+        //check skill fire
+        if(botPlayer.getFire().isFullMana()){
+            int countGemRed = (int) grid.getGems().stream().filter(gem -> gem.getType() == GemType.RED).count();
+            List<Hero> heroCanDie = enemyPlayer.getHeroes().stream().filter(hero -> hero.isAlive() && (hero.getAttack() + countGemRed) > hero.getHp()).collect(Collectors.toList());
+            if(!heroCanDie.isEmpty()){
+                Optional<Hero> heroDieFullMana = heroCanDie.stream().filter(Hero::isFullMana).findFirst();
+                if(heroDieFullMana.isPresent()){
+                    taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroDieFullMana.get().getId()), getStartTime(SNAPSHOT_SIZE));
+                    return;
+                }
+                Hero heroCanDieMaxHp = heroCanDie.stream().max(Comparator.comparingInt(Hero::getHp)).get();
+                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroCanDieMaxHp.getId()), getStartTime(SNAPSHOT_SIZE));
+                return;
+            }
+
+            Optional<Hero> secondEnemy = enemyPlayer.getHeroes().stream().filter(hero -> hero.isAlive() && (hero.getAttack() + countGemRed) > 14).findFirst();
+            if(secondEnemy.isPresent()){
+                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),secondEnemy.get().getId()), getStartTime(SNAPSHOT_SIZE));
+                return;
+            }
+        }
+        //check gem mana
+        Pair<Integer> swapGemPair = grid.recommendSwapGem();
+        if(!swapGemPair.isNull()){
+            taskScheduler.schedule(new SendRequestSwapGem(swapGemPair), getStartTime(SNAPSHOT_SIZE));
+            return;
+        }
+        log("Error: No case to send server, please checkkkkkkkkkkkkkkkkkkkkk");
+
     }
 
-    private Date getStartTime() {
-        return new Date(System.currentTimeMillis() + delaySwapGem);
+    private Date getStartTime(int sizeSnapshot) {
+        return new Date(System.currentTimeMillis() + delaySwapGem*sizeSnapshot);
     }
 
     private void handleHeroes(ISFSObject params) {
@@ -349,19 +446,21 @@ public  class BaseBot implements IEventListener {
         ISFSArray botPlayerHero = objBotPlayer.getSFSArray("heroes");
         ISFSArray enemyPlayerHero = objEnemyPlayer.getSFSArray("heroes");
 
-        for (int i = 0; i < botPlayerHero.size(); i++) {
-            botPlayer.getHeroes().add(new Hero(botPlayerHero.getSFSObject(i)));
-        }
-        for (int i = 0; i < enemyPlayerHero.size(); i++) {
-            enemyPlayer.getHeroes().add(new Hero(enemyPlayerHero.getSFSObject(i)));
-        }
-
+        botPlayer.initialHeroes(botPlayerHero);
+        enemyPlayer.initialHeroes(enemyPlayerHero);
         // Gems
-        grid = new Grid(gameSession.getSFSArray("gems"),null, botPlayer.getRecommendGemType());
+        grid = new Grid(gameSession.getSFSArray("gems"));
+        grid.setMyHeroGemType(botPlayer.getRecommendGemType());
         currentPlayerId = gameSession.getInt("currentPlayerId");
+        // set data skill
+        data.putUtfString("gemIndex", String.valueOf(ThreadLocalRandom.current().nextInt(64)));
+        data.putBool("isTargetAllyOrNot",false);
+        data.putUtfString("targetId", enemyPlayer.firstHeroAlive().getId().toString());
         log("Initial game ");
-        taskScheduler.schedule(new FinishTurn(true), getStartTime());
+        taskScheduler.schedule(new FinishTurn(true), getStartTime(SNAPSHOT_SIZE));
     }
+
+
 
     protected GemType selectGem() {
         return botPlayer.getRecommendGemType().stream().filter(gemType -> grid.getGemTypes().contains(gemType)).findFirst().orElseGet(null);
@@ -389,23 +488,23 @@ public  class BaseBot implements IEventListener {
 
     private class SendReQuestSkill implements Runnable {
         private final Hero heroCastSkill;
+        private final HeroIdEnum targetHero;
+        public SendReQuestSkill(Hero heroCastSkill,HeroIdEnum heroIdEnum) {
+            this.heroCastSkill = heroCastSkill;
+            this.targetHero = heroIdEnum;
+        }
 
         public SendReQuestSkill(Hero heroCastSkill) {
-            this.heroCastSkill = heroCastSkill;
+            this(heroCastSkill,null);
         }
 
         @Override
         public void run() {
             data.putUtfString("casterId", heroCastSkill.getId().toString());
-            if (heroCastSkill.isHeroSelfSkill()) {
-                data.putUtfString("targetId", botPlayer.firstHeroAlive().getId().toString());
-            } else {
-                data.putUtfString("targetId", enemyPlayer.firstHeroAlive().getId().toString());
+            if(targetHero != null){
+                data.putUtfString("targetId", targetHero.toString());
             }
-            data.putUtfString("selectedGem", String.valueOf(selectGem().getCode()));
-            data.putUtfString("gemIndex", String.valueOf(ThreadLocalRandom.current().nextInt(64)));
-            data.putBool("isTargetAllyOrNot",false);
-            log("sendExtensionRequest()|room:" + room.getName() + "|extCmd:" + ConstantCommand.USE_SKILL + "|Hero cast skill: " + heroCastSkill.getName());
+            log("sendExtensionRequest()|room:" + room.getName() + "|extCmd:" + ConstantCommand.USE_SKILL + "|Hero cast skill: " + heroCastSkill.getName() + " targetId: "+targetHero);
             sendExtensionRequest(ConstantCommand.USE_SKILL, data);
         }
 
@@ -424,6 +523,14 @@ public  class BaseBot implements IEventListener {
             log("sendExtensionRequest()|room:" + room.getName() + "|extCmd:" + ConstantCommand.SWAP_GEM + "|index1: " + indexSwap.getParam1() + " index1: " + indexSwap.getParam2());
             sendExtensionRequest(ConstantCommand.SWAP_GEM, data);
         }
+    }
+
+    private void getTokenLogin(){
+        HttpEntity<Account> request = new HttpEntity<>(new Account(username,password));
+        String URL ="http://172.16.100.112:8081/api/v1/user/authenticate";
+        RestTemplate restTemplate = new RestTemplate();
+        Object response= restTemplate.postForObject(URL,request,Object.class);
+        this.token=response.toString().split("=")[1].replace("}","");
     }
 
 }
