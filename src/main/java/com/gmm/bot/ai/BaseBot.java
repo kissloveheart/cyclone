@@ -419,7 +419,7 @@ public  class BaseBot implements IEventListener {
     }
 
     private Date getStartTime(int sizeSnapshot) {
-        return new Date(System.currentTimeMillis() + delaySwapGem*sizeSnapshot);
+        return new Date(System.currentTimeMillis() + (long) delaySwapGem *sizeSnapshot);
     }
 
     private void handleHeroes(ISFSObject params) {
