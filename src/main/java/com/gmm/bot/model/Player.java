@@ -1,6 +1,7 @@
 package com.gmm.bot.model;
 
 import com.gmm.bot.enumeration.GemType;
+import com.gmm.bot.enumeration.HeroIdEnum;
 import com.smartfoxserver.v2.entities.data.ISFSArray;
 import lombok.Getter;
 import lombok.Setter;
@@ -18,8 +19,10 @@ public class Player {
     private Hero bird;
     private Hero fire;
     private Hero dog;
+    private Hero cow;
     private List<GemType> manaTypeHeroes;
     private boolean isBirdCastSkill;
+    private boolean hasCow;
      public Player(int id, String displayName) {
         this.id = id;
         this.displayName = displayName;
@@ -41,7 +44,7 @@ public class Player {
          manaTypeHeroes.clear();
          log.info("Before get recommend type gem to swap");
         log.info("Gem type recommend: "+ Arrays.toString(manaTypeHeroes.toArray())+" bird:" + isBirdCastSkill);
-        log.info(" Dog full mana:" +dog.noFullMana()+ " Bird full mana:" +bird.noFullMana() + " Fire full mana:" +fire.noFullMana());
+        log.info(" Dog not full mana:" +dog.noFullMana()+ " Bird not full mana:" +bird.noFullMana() + " Fire not full mana:" +fire.noFullMana());
          if(!bird.isAlive()){
              isBirdCastSkill = true;
          }
@@ -80,6 +83,9 @@ public class Player {
                  log.info("Gem type recommend case 7: "+ Arrays.toString(manaTypeHeroes.toArray())+" bird:" + isBirdCastSkill);
                  return manaTypeHeroes;
              }
+         }
+         if(!dog.isAlive() && !fire.isAlive()){
+             return Collections.emptyList();
          }
         if(dog.noFullMana() && bird.noFullMana() && fire.noFullMana()){
             manaTypeHeroes.addAll(dog.getGemTypes());
@@ -121,13 +127,24 @@ public class Player {
 
     public void initialHeroes(ISFSArray hero) {
         for (int i = 0; i < hero.size(); i++) {
-            heroes.add(new Hero(hero.getSFSObject(i)));
-            if(i == 0){
-                bird = heroes.get(i);
-            } else if (i == 1){
-                fire = heroes.get(i);
-            } else {
-                dog = heroes.get(i);
+            Hero hero1 = new Hero(hero.getSFSObject(i));
+            heroes.add(hero1);
+            if(hero1.getId() == HeroIdEnum.SEA_GOD){
+                this.hasCow = true;
+            }
+            switch (hero1.getId()){
+                case SEA_SPIRIT:
+                    bird = hero1;
+                    break;
+                case CERBERUS:
+                    dog = hero1;
+                    break;
+                case FIRE_SPIRIT:
+                    fire = hero1;
+                    break;
+                case SEA_GOD:
+                    cow = hero1;
+                    break;
             }
         }
     }

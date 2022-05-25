@@ -292,7 +292,7 @@ public  class BaseBot implements IEventListener {
         SFSObject parameters = new SFSObject();
         parameters.putUtfString(ConstantCommand.BATTLE_MODE, BattleMode.NORMAL.name());
         parameters.putUtfString(ConstantCommand.ID_TOKEN, this.token);
-        parameters.putUtfString(ConstantCommand.NICK_NAME, "aaaaaaaaaa");
+        parameters.putUtfString(ConstantCommand.NICK_NAME,"CYCLONE");
         this.sfsClient.send(new LoginRequest(username, "", zone, parameters));
     }
 
@@ -355,14 +355,10 @@ public  class BaseBot implements IEventListener {
                 return;
             }
         }
-        Pair<Integer> integerSwordFour = grid.recommendSwapGem4Sword();
-        if(!integerSwordFour.isNull()){
-            taskScheduler.schedule(new SendRequestSwapGem(integerSwordFour), getStartTime(SNAPSHOT_SIZE));
-            return;
-        }
+
         // check hero enemy size == 1 can skill instant
         List<Hero> aliveHero = enemyPlayer.getAliveHero();
-        if(aliveHero.size() ==1){
+        if(aliveHero.size() <=2){
             Pair<Integer> integerPairSword = grid.recommendSwapGemSword();
             if(!integerPairSword.isNull()){
                 Hero heroFirst = botPlayer.firstHeroAlive();
@@ -387,26 +383,42 @@ public  class BaseBot implements IEventListener {
             taskScheduler.schedule(new SendReQuestSkill(botPlayer.getBird(),botPlayer.getBird().getId() ), getStartTime(SNAPSHOT_SIZE));
             return;
         }
-        //check skill fire
+        // check skill dog if enemy has buffalo
+        if(botPlayer.getDog().isFullMana() && enemyPlayer.isHasCow()){
+            if(enemyPlayer.getCow().isFullMana()){
+                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getDog()), getStartTime(SNAPSHOT_SIZE));
+                return;
+            }
+        }
+        //todo check skill fire 1 size
         if(botPlayer.getFire().isFullMana()){
             int countGemRed = (int) grid.getGems().stream().filter(gem -> gem.getType() == GemType.RED).count();
             List<Hero> heroCanDie = enemyPlayer.getHeroes().stream().filter(hero -> hero.isAlive() && (hero.getAttack() + countGemRed) > hero.getHp()).collect(Collectors.toList());
             if(!heroCanDie.isEmpty()){
-                Optional<Hero> heroDieFullMana = heroCanDie.stream().filter(Hero::isFullMana).findFirst();
-                if(heroDieFullMana.isPresent()){
-                    taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroDieFullMana.get().getId()), getStartTime(SNAPSHOT_SIZE));
-                    return;
-                }
-                Hero heroCanDieMaxHp = heroCanDie.stream().max(Comparator.comparingInt(Hero::getHp)).get();
-                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroCanDieMaxHp.getId()), getStartTime(SNAPSHOT_SIZE));
+                chooseTargetHero(heroCanDie);
                 return;
             }
-
-            Optional<Hero> secondEnemy = enemyPlayer.getHeroes().stream().filter(hero -> hero.isAlive() && (hero.getAttack() + countGemRed) > 14).findFirst();
-            if(secondEnemy.isPresent()){
-                taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),secondEnemy.get().getId()), getStartTime(SNAPSHOT_SIZE));
+            List<Hero> collectHero = enemyPlayer.getHeroes().stream().filter(hero -> hero.isAlive() && (hero.getAttack() + countGemRed) > 14).collect(Collectors.toList());
+            if(!collectHero.isEmpty()){
+                chooseTargetHero(collectHero);
                 return;
             }
+            if(botPlayer.getAliveHero().size() == 1 || enemyPlayer.getAliveHero().size() == 1){
+                chooseTargetHero(enemyPlayer.getAliveHero());
+            }
+        }
+        // check skill fire if enemy has buffalo
+        if(botPlayer.getFire().isFullMana() && enemyPlayer.isHasCow()){
+            if(enemyPlayer.getCow().isFullMana()){
+                chooseTargetHero(enemyPlayer.getAliveHero());
+                return;
+            }
+        }
+        //check 4 sword
+        Pair<Integer> integerSwordFour = grid.recommendSwapGem4Sword();
+        if(!integerSwordFour.isNull()){
+            taskScheduler.schedule(new SendRequestSwapGem(integerSwordFour), getStartTime(SNAPSHOT_SIZE));
+            return;
         }
         //check gem mana
         Pair<Integer> swapGemPair = grid.recommendSwapGem();
@@ -416,6 +428,16 @@ public  class BaseBot implements IEventListener {
         }
         log("Error: No case to send server, please checkkkkkkkkkkkkkkkkkkkkk");
 
+    }
+
+    private void chooseTargetHero(List<Hero> heroCanDie) {
+        Optional<Hero> heroDieFullMana = heroCanDie.stream().filter(Hero::isFullMana).findFirst();
+        if(heroDieFullMana.isPresent()){
+            taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroDieFullMana.get().getId()), getStartTime(SNAPSHOT_SIZE));
+            return;
+        }
+        Hero heroCanDieMaxAttack = heroCanDie.stream().max(Comparator.comparingInt(Hero::getAttack)).get();
+        taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroCanDieMaxAttack.getId()), getStartTime(SNAPSHOT_SIZE));
     }
 
     private Date getStartTime(int sizeSnapshot) {
