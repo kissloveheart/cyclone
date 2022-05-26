@@ -95,9 +95,6 @@ public  class BaseBot implements IEventListener {
     protected void connect() {
         this.logStatus("connecting", " => Connecting to smartfox server " + host + "|" + port + " zone: " + zone);
 
-        this.sfsClient.setUseBlueBox(true);
-        this.sfsClient.connect(this.host, this.port);
-
         ConfigData cf = new ConfigData();
         cf.setHost(host);
         cf.setPort(port);
