@@ -402,6 +402,7 @@ public  class BaseBot implements IEventListener {
             }
             if(botPlayer.getAliveHero().size() == 1 || enemyPlayer.getAliveHero().size() == 1){
                 chooseTargetHero(enemyPlayer.getAliveHero());
+                return;
             }
         }
         // check skill fire if enemy has buffalo
