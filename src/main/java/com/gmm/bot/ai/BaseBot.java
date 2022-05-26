@@ -429,9 +429,10 @@ public  class BaseBot implements IEventListener {
     }
 
     private void chooseTargetHero(List<Hero> heroCanDie) {
-        Optional<Hero> heroDieFullMana = heroCanDie.stream().filter(Hero::isFullMana).findFirst();
-        if(heroDieFullMana.isPresent()){
-            taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroDieFullMana.get().getId()), getStartTime(SNAPSHOT_SIZE));
+        List<Hero> heroDieFullMana = heroCanDie.stream().filter(Hero::isFullMana).collect(Collectors.toList());
+        if(!heroDieFullMana.isEmpty()){
+            Hero heroCanDieMaxAttack = heroDieFullMana.stream().max(Comparator.comparingInt(Hero::getAttack)).get();
+            taskScheduler.schedule(new SendReQuestSkill(botPlayer.getFire(),heroCanDieMaxAttack.getId()), getStartTime(SNAPSHOT_SIZE));
             return;
         }
         Hero heroCanDieMaxAttack = heroCanDie.stream().max(Comparator.comparingInt(Hero::getAttack)).get();
