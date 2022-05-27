@@ -179,12 +179,6 @@ public  class BaseBot implements IEventListener {
         if (room.isGame()) {
             return;
         }
-        String start = "";
-        System.out.print("======> Enter an \"1\" to start find game: ");
-        do{
-            start = keyboard.nextLine();
-            System.out.println();
-        } while (!start.equals("1"));
         findGame();
 
     }
