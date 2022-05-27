@@ -150,6 +150,11 @@ public  class BaseBot implements IEventListener {
     private void showError(SFSObject params) {
         String error = params.getUtfString("message");
         log(error);
+        Pair<Integer> swapGemPair = grid.recommendSwapGem();
+        if(!swapGemPair.isNull()){
+            taskScheduler.schedule(new SendRequestSwapGem(swapGemPair), getStartTime(SNAPSHOT_SIZE));
+            return;
+        }
     }
 
     private void onConnection(BaseEvent event) {
