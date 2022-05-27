@@ -329,7 +329,7 @@ public  class BaseBot implements IEventListener {
         ISFSArray gemCodes = lastSnapshot.getSFSArray("gems");
         ISFSArray gemModifiers = lastSnapshot.getSFSArray("gemModifiers");
         grid.updateGems(gemCodes,gemModifiers);
-        taskScheduler.schedule(new FinishTurn(false), getStartTime(snapshotSfsArray.size()));
+        taskScheduler.schedule(new FinishTurn(false), getStartTime(SNAPSHOT_SIZE));
     }
 
 
